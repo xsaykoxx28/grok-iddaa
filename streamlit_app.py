@@ -1,7 +1,7 @@
 import streamlit as st
 import requests
 import pandas as pd
-from datetime import date, timedelta
+from datetime import date
 import numpy as np
 import math
 
@@ -17,48 +17,48 @@ st.caption("Telefon için optimize • Gerçek zamanlı • Poisson Modeli")
 
 api_key = st.secrets["api_key"]
 
-# Büyük butonlar (telefon dostu)
-col1, col2, col3 = st.columns([1,1,1])
+st.subheader("Hızlı Butonlar")
+col1, col2 = st.columns(2)
 with col1:
-    if st.button("📅 Bugünkü Maçları Getir", use_container_width=True):
-        st.session_state.selected_date = date.today()
+    if st.button("🔴 Canlı Maçlar", use_container_width=True):
+        st.session_state.mode = "live"
         st.rerun()
 with col2:
-    if st.button("🔴 Canlı Maçlar", use_container_width=True):
-        st.session_state.live_mode = True
-        st.rerun()
-with col3:
-    if st.button("🌍 Tüm Tarihler", use_container_width=True):
-        st.session_state.live_mode = False
+    if st.button("📅 Bugünkü Maçları Getir", use_container_width=True):
+        st.session_state.mode = "today"
         st.rerun()
 
 with st.sidebar:
     st.header("🎛️ Filtreler")
-    selected_date = st.date_input("Maç Tarihi", value=st.session_state.get("selected_date", date.today()))
+    selected_date = st.date_input("Veya Tarih Seç", value=date.today())
+
+if st.sidebar.button("🌍 Seçili Tarihten Çek", use_container_width=True):
+    st.session_state.mode = "date"
+    st.session_state.date = selected_date
+    st.rerun()
 
 # Maç çekme
-if st.sidebar.button("🌍 Seçili Tarihten Maçları Çek", use_container_width=True) or "selected_date" in st.session_state:
-    target_date = st.session_state.get("selected_date", selected_date)
+if "mode" in st.session_state:
+    mode = st.session_state.mode
     with st.spinner("Maçlar yükleniyor..."):
-        for attempt in range(2):  # Bugün yoksa yarını dene
-            url = f"https://v3.football.api-sports.io/fixtures?date={target_date.isoformat()}"
-            headers = {"x-apisports-key": api_key}
-            r = requests.get(url, headers=headers)
-            
-            if r.status_code != 200:
-                st.error("API Hatası (kota dolduysa yarın dene)")
-                st.stop()
-            
-            fixtures = r.json().get("response", [])
-            
-            if fixtures:
-                break
-            else:
-                target_date = target_date + timedelta(days=1)
-                st.info(f"Bu tarihte maç yok, {target_date} tarihi deneniyor...")
+        if mode == "live":
+            url = "https://v3.football.api-sports.io/fixtures?live=all"
+        elif mode == "today":
+            url = f"https://v3.football.api-sports.io/fixtures?date={date.today().isoformat()}"
+        else:
+            url = f"https://v3.football.api-sports.io/fixtures?date={st.session_state.date.isoformat()}"
+        
+        headers = {"x-apisports-key": api_key}
+        r = requests.get(url, headers=headers)
+        
+        if r.status_code != 200:
+            st.error("API Hatası - Kota dolduysa yarın dene")
+            st.stop()
+        
+        fixtures = r.json().get("response", [])
         
         if not fixtures:
-            st.warning("❌ Bu hafta hiç maç bulunamadı. Başka tarih seç.")
+            st.warning("❌ Şu anda maç yok veya API henüz yüklemedi.\n\n🔴 Canlı Maçlar butonunu dene veya **1-2 saat sonra** tekrar dene.")
             st.stop()
         
         data = [{
@@ -72,16 +72,15 @@ if st.sidebar.button("🌍 Seçili Tarihten Maçları Çek", use_container_width
         } for f in fixtures]
         
         df = pd.DataFrame(data)
-        popular = ["Süper Lig", "Premier League", "La Liga", "Serie A", "Bundesliga", "Ligue 1", "Champions League"]
-        df["is_popular"] = df["lig"].isin(popular)
-        df = df.sort_values(["is_popular", "country", "lig", "saat"], ascending=[False, True, True, True])
+        df = df.sort_values(["country", "lig", "saat"])
         
         st.session_state.df = df
-        st.success(f"✅ {len(df)} maç yüklendi! ({target_date})")
+        st.success(f"✅ {len(df)} maç yüklendi!")
 
 # Veri varsa göster
 if "df" in st.session_state:
     df = st.session_state.df
+    
     col1, col2 = st.columns(2)
     with col1:
         secili_country = st.multiselect("Ülke", sorted(df["country"].unique()), default=["Turkey", "Türkiye"])
@@ -146,4 +145,4 @@ if "df" in st.session_state:
             del st.session_state.selected
             st.rerun()
 
-st.caption("© Grok 2026 • Mobil optimize • Sorumlu oyna!")
+st.caption("© Grok 2026 • Sabah erken saatlerde API yavaş olabilir • Sorumlu oyna!")
