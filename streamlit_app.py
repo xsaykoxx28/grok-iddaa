@@ -12,12 +12,12 @@ def poisson_pmf(k, lam):
 
 st.set_page_config(page_title="Grok İddaa", page_icon="⚽", layout="wide", initial_sidebar_state="collapsed")
 
-st.title("⚽ Grok İddaa Tahmin - TÜM LİGLER 🌍")
-st.caption("Telefon için optimize • Gerçek zamanlı • Poisson Modeli")
+st.title("⚽ Grok İddaa Tahmin - Football-Data.org 🌍")
+st.caption("Telefon optimize • Gerçek zamanlı maçlar • Poisson Modeli")
 
-api_key = st.secrets["api_key"]
+api_key = st.secrets["football_data_key"]
 
-st.subheader("Hızlı Butonlar")
+# Hızlı butonlar
 col1, col2 = st.columns(2)
 with col1:
     if st.button("🔴 Canlı Maçlar", use_container_width=True):
@@ -30,9 +30,9 @@ with col2:
 
 with st.sidebar:
     st.header("🎛️ Filtreler")
-    selected_date = st.date_input("Veya Tarih Seç", value=date.today())
+    selected_date = st.date_input("Tarih Seç", value=date.today())
 
-if st.sidebar.button("🌍 Seçili Tarihten Çek", use_container_width=True):
+if st.sidebar.button("🌍 Seçili Tarihten Maç Çek", use_container_width=True):
     st.session_state.mode = "date"
     st.session_state.date = selected_date
     st.rerun()
@@ -40,38 +40,40 @@ if st.sidebar.button("🌍 Seçili Tarihten Çek", use_container_width=True):
 # Maç çekme
 if "mode" in st.session_state:
     mode = st.session_state.mode
-    with st.spinner("Maçlar yükleniyor..."):
+    with st.spinner("Maçlar Football-Data.org'dan yükleniyor..."):
         if mode == "live":
-            url = "https://v3.football.api-sports.io/fixtures?live=all"
+            url = "https://api.football-data.org/v4/matches?status=LIVE"
         elif mode == "today":
-            url = f"https://v3.football.api-sports.io/fixtures?date={date.today().isoformat()}"
+            url = f"https://api.football-data.org/v4/matches?date={date.today().isoformat()}"
         else:
-            url = f"https://v3.football.api-sports.io/fixtures?date={st.session_state.date.isoformat()}"
+            url = f"https://api.football-data.org/v4/matches?date={st.session_state.date.isoformat()}"
         
-        headers = {"x-apisports-key": api_key}
+        headers = {"X-Auth-Token": api_key}
         r = requests.get(url, headers=headers)
         
         if r.status_code != 200:
-            st.error("API Hatası - Kota dolduysa yarın dene")
+            st.error("API Hatası → Key'i doğru girdiğinden emin ol veya kota dolduysa yarın dene")
             st.stop()
         
-        fixtures = r.json().get("response", [])
+        data = r.json().get("matches", [])
         
-        if not fixtures:
-            st.warning("❌ Şu anda maç yok veya API henüz yüklemedi.\n\n🔴 Canlı Maçlar butonunu dene veya **1-2 saat sonra** tekrar dene.")
+        if not data:
+            st.warning("❌ Şu anda maç yok veya API henüz yüklemedi. 🔴 Canlı Maçlar veya 📅 Bugünkü butonunu dene.")
             st.stop()
         
-        data = [{
-            "fixture_id": f["fixture"]["id"],
-            "lig": f["league"]["name"],
-            "country": f["league"].get("country", "International"),
-            "saat": f["fixture"]["date"][11:16],
-            "ev": f["teams"]["home"]["name"],
-            "deplasman": f["teams"]["away"]["name"],
-            "durum": f["fixture"]["status"]["short"]
-        } for f in fixtures]
+        matches_list = []
+        for m in data:
+            matches_list.append({
+                "fixture_id": m["id"],
+                "lig": m["competition"]["name"],
+                "country": m["competition"].get("area", {}).get("name", "International"),
+                "saat": m["utcDate"][11:16],  # UTC saat
+                "ev": m["homeTeam"]["name"],
+                "deplasman": m["awayTeam"]["name"],
+                "durum": m["status"]
+            })
         
-        df = pd.DataFrame(data)
+        df = pd.DataFrame(matches_list)
         df = df.sort_values(["country", "lig", "saat"])
         
         st.session_state.df = df
@@ -83,7 +85,7 @@ if "df" in st.session_state:
     
     col1, col2 = st.columns(2)
     with col1:
-        secili_country = st.multiselect("Ülke", sorted(df["country"].unique()), default=["Turkey", "Türkiye"])
+        secili_country = st.multiselect("Ülke", sorted(df["country"].unique()), default=["Turkey"])
     with col2:
         filtered = df[df["country"].isin(secili_country)] if secili_country else df
         secili_lig = st.multiselect("Lig", sorted(filtered["lig"].unique()), default=filtered["lig"].unique()[:10])
@@ -113,13 +115,6 @@ if "df" in st.session_state:
         st.divider()
         st.subheader(f"🔮 Maç ID: {fid}")
         
-        p_resp = requests.get(f"https://v3.football.api-sports.io/predictions?fixture={fid}", headers={"x-apisports-key": api_key})
-        if p_resp.json().get("response"):
-            p = p_resp.json()["response"][0]["predictions"]
-            c1, c2 = st.columns(2)
-            c1.metric("Maç Sonucu", p["winner"]["name"] or "Beraberlik")
-            c2.metric("Öneri", p["advice"])
-        
         st.subheader("📊 Grok Poisson Tahmini")
         home_l, away_l = 1.6, 1.3
         max_g = 8
@@ -145,4 +140,4 @@ if "df" in st.session_state:
             del st.session_state.selected
             st.rerun()
 
-st.caption("© Grok 2026 • Sabah erken saatlerde API yavaş olabilir • Sorumlu oyna!")
+st.caption("© Grok 2026 • Football-Data.org API • Sorumlu oyna!")
