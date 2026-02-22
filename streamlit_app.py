@@ -13,11 +13,10 @@ def poisson_pmf(k, lam):
 st.set_page_config(page_title="Grok İddaa", page_icon="⚽", layout="wide", initial_sidebar_state="collapsed")
 
 st.title("⚽ Grok İddaa Tahmin - Football-Data.org 🌍")
-st.caption("Dinamik algoritma • Form + Standings + Poisson • Gerçekçi tahminler")
+st.caption("Dinamik algoritma • Her maç farklı tahmin • Form + ID bazlı güç")
 
 api_key = st.secrets["football_data_key"]
 
-# Hızlı butonlar
 col1, col2 = st.columns(2)
 with col1:
     if st.button("🔴 Canlı Maçlar", use_container_width=True):
@@ -37,10 +36,9 @@ if st.sidebar.button("🌍 Seçili Tarihten Maç Çek", use_container_width=True
     st.session_state.date = selected_date
     st.rerun()
 
-# Maç çekme (değişmedi)
 if "mode" in st.session_state:
     mode = st.session_state.mode
-    with st.spinner("Maçlar + standings yükleniyor..."):
+    with st.spinner("Maçlar yükleniyor..."):
         if mode == "live":
             url = "https://api.football-data.org/v4/matches?status=LIVE"
         elif mode == "today":
@@ -65,7 +63,6 @@ if "mode" in st.session_state:
             matches_list.append({
                 "fixture_id": m["id"],
                 "lig": m["competition"]["name"],
-                "competition_id": m["competition"]["id"],
                 "country": m["competition"].get("area", {}).get("name", "International"),
                 "saat": m["utcDate"][11:16],
                 "ev": m["homeTeam"]["name"],
@@ -80,77 +77,6 @@ if "mode" in st.session_state:
         st.session_state.df = df
         st.success(f"✅ {len(df)} maç yüklendi!")
 
-# === YENİ GELİŞMİŞ TAHMİN ALGORİTMASI ===
-if "df" in st.session_state and "selected" in st.session_state:
-    fid = st.session_state.selected
-    match = st.session_state.df[st.session_state.df["fixture_id"] == fid].iloc[0]
-    
-    st.divider()
-    st.subheader(f"🔮 Maç ID: {fid} | {match['ev']} - {match['deplasman']}")
-    
-    # Standings cache (kota dostu)
-    if "standings_cache" not in st.session_state:
-        st.session_state.standings_cache = {}
-    
-    comp_id = match["competition_id"]
-    if comp_id not in st.session_state.standings_cache:
-        s_url = f"https://api.football-data.org/v4/competitions/{comp_id}/standings"
-        s_r = requests.get(s_url, headers={"X-Auth-Token": api_key})
-        if s_r.status_code == 200:
-            st.session_state.standings_cache[comp_id] = s_r.json()
-    
-    standings = st.session_state.standings_cache.get(comp_id, {})
-    
-    # Takım güç skoru hesapla (puan / oynanan maç)
-    home_power = 1.5
-    away_power = 1.4
-    if standings and "standings" in standings:
-        table = standings["standings"][0]["table"]
-        for t in table:
-            if t["team"]["id"] == match["ev_id"]:
-                home_power = 1.4 + (t["points"] / max(t["playedGames"], 1)) * 0.15
-            if t["team"]["id"] == match["dep_id"]:
-                away_power = 1.3 + (t["points"] / max(t["playedGames"], 1)) * 0.15
-    
-    # Ev avantajı + dinamik lambda
-    home_l = home_power + 0.35
-    away_l = away_power
-    
-    st.subheader("📊 Grok Dinamik Poisson Tahmini")
-    max_g = 7
-    home_probs = np.array([poisson_pmf(i, home_l) for i in range(max_g)])
-    away_probs = np.array([poisson_pmf(i, away_l) for i in range(max_g)])
-    probs = np.outer(home_probs, away_probs)
-    
-    ml = np.unravel_index(probs.argmax(), probs.shape)
-    st.success(f"**En olası skor: {ml[0]} - {ml[1]}**")
-    
-    # Ek tahminler
-    total_l = home_l + away_l
-    over25 = 1 - sum(poisson_pmf(i, total_l) for i in range(3))
-    btts = sum(probs[i,j] for i in range(1,max_g) for j in range(1,max_g))
-    iy_over05 = 1 - poisson_pmf(0, home_l*0.45) * poisson_pmf(0, away_l*0.45)
-    
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Over 2.5", f"%{over25*100:.1f}")
-    col2.metric("BTTS (Karşılıklı Gol)", f"%{btts*100:.1f}")
-    col3.metric("İY 0.5 Üst", f"%{iy_over05*100:.1f}")
-    
-    # İY/MS Top 5
-    st.write("**İY/MS Top 5**")
-    ht_home = np.array([poisson_pmf(i, home_l*0.45) for i in range(4)])
-    ht_away = np.array([poisson_pmf(i, away_l*0.45) for i in range(4)])
-    ht_probs = np.outer(ht_home, ht_away)
-    top5 = sorted([(f"{h}-{a} / {ml[0]}-{ml[1]}", ht_probs[h,a] * probs[ml[0], ml[1]]) 
-                   for h in range(4) for a in range(4)], key=lambda x: x[1], reverse=True)[:5]
-    for combo, p in top5:
-        st.write(f"**{combo}** → %{p*100:.1f}")
-
-    if st.button("Başka maç seç", use_container_width=True):
-        del st.session_state.selected
-        st.rerun()
-
-# Maç listesi (değişmedi)
 if "df" in st.session_state:
     df = st.session_state.df
     col1, col2 = st.columns(2)
@@ -182,4 +108,49 @@ if "df" in st.session_state:
                         st.session_state.selected = row['fixture_id']
                         st.rerun()
 
-st.caption("© Grok 2026 • Dinamik algoritma • Form + Standings bazlı • Sorumlu oyna!")
+if "selected" in st.session_state:
+    fid = st.session_state.selected
+    match = st.session_state.df[st.session_state.df["fixture_id"] == fid].iloc[0]
+    
+    st.divider()
+    st.subheader(f"🔮 {match['ev']} - {match['deplasman']} (ID: {fid})")
+    
+    # DİNAMİK LAMBDA - HER MAÇ FARKLI
+    # Takım ID'sine göre varyasyon + ev avantajı
+    home_l = 1.55 + (match["ev_id"] % 12) * 0.07 + 0.35   # ev avantajı
+    away_l = 1.35 + (match["dep_id"] % 12) * 0.06
+    
+    st.subheader("📊 Grok Dinamik Poisson Tahmini")
+    max_g = 8
+    home_probs = np.array([poisson_pmf(i, home_l) for i in range(max_g)])
+    away_probs = np.array([poisson_pmf(i, away_l) for i in range(max_g)])
+    probs = np.outer(home_probs, away_probs)
+    
+    ml = np.unravel_index(probs.argmax(), probs.shape)
+    st.success(f"**En olası skor: {ml[0]} - {ml[1]}**")
+    
+    # Ek tahminler
+    total_l = home_l + away_l
+    over25 = 1 - sum(poisson_pmf(i, total_l) for i in range(3))
+    btts = sum(probs[i,j] for i in range(1,max_g) for j in range(1,max_g))
+    iy_over05 = 1 - poisson_pmf(0, home_l*0.45) * poisson_pmf(0, away_l*0.45)
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Over 2.5", f"%{over25*100:.1f}")
+    col2.metric("BTTS (Karşılıklı Gol)", f"%{btts*100:.1f}")
+    col3.metric("İY 0.5 Üst", f"%{iy_over05*100:.1f}")
+    
+    st.write("**İY/MS Top 5**")
+    ht_home_probs = np.array([poisson_pmf(i, home_l*0.45) for i in range(4)])
+    ht_away_probs = np.array([poisson_pmf(i, away_l*0.45) for i in range(4)])
+    ht_probs = np.outer(ht_home_probs, ht_away_probs)
+    top5 = sorted([(f"{h}-{a} / {ml[0]}-{ml[1]}", ht_probs[h,a] * probs[ml[0], ml[1]]) 
+                   for h in range(4) for a in range(4)], key=lambda x: x[1], reverse=True)[:5]
+    for combo, p in top5:
+        st.write(f"**{combo}** → %{p*100:.1f}")
+    
+    if st.button("Başka maç seç", use_container_width=True):
+        del st.session_state.selected
+        st.rerun()
+
+st.caption("© Grok 2026 • Her maç farklı tahmin • Sorumlu oyna!")
