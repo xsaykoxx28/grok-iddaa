@@ -2,8 +2,14 @@ import streamlit as st
 import requests
 import pandas as pd
 from datetime import date
-from scipy.stats import poisson
 import numpy as np
+import math
+
+# Manuel Poisson PMF (scipy olmadan)
+def poisson_pmf(k, lam):
+    if k < 0 or not isinstance(k, int):
+        return 0.0
+    return math.exp(-lam) * (lam ** k) / math.factorial(k)
 
 # MOBİL OPTİMİZASYON
 st.set_page_config(
@@ -16,10 +22,10 @@ st.set_page_config(
 st.title("⚽ Grok İddaa Tahmin - TÜM LİGLER 🌍")
 st.caption("Telefon için optimize • Gerçek zamanlı • Poisson Modeli")
 
-# API KEY (güvenli)
+# API KEY
 api_key = st.secrets["api_key"]
 
-# Sidebar Filtreler (telefon için kapalı)
+# Sidebar Filtreler
 with st.sidebar:
     st.header("🎛️ Filtreler")
     selected_date = st.date_input("Maç Tarihi", value=date.today())
@@ -99,13 +105,22 @@ if "df" in st.session_state:
         
         st.subheader("📊 Grok Poisson Tahmini")
         home_l, away_l = 1.6, 1.3
-        probs = np.outer([poisson.pmf(i, home_l) for i in range(8)], [poisson.pmf(i, away_l) for i in range(8)])
+        max_g = 8
+        home_probs = np.array([poisson_pmf(i, home_l) for i in range(max_g)])
+        away_probs = np.array([poisson_pmf(i, away_l) for i in range(max_g)])
+        probs = np.outer(home_probs, away_probs)
+        
         ml = np.unravel_index(probs.argmax(), probs.shape)
         st.success(f"**En olası skor: {ml[0]} - {ml[1]}**")
         
         st.write("**İY/MS Top 5**")
-        ht_probs = np.outer([poisson.pmf(i, home_l*0.45) for i in range(4)], [poisson.pmf(i, away_l*0.45) for i in range(4)])
-        top5 = sorted([(f"{h}-{a} / {ml[0]}-{ml[1]}", ht_probs[h,a] * probs[ml[0], ml[1]]) for h in range(4) for a in range(4)], key=lambda x: x[1], reverse=True)[:5]
+        ht_l = 0.45
+        ht_home_probs = np.array([poisson_pmf(i, home_l*ht_l) for i in range(4)])
+        ht_away_probs = np.array([poisson_pmf(i, away_l*ht_l) for i in range(4)])
+        ht_probs = np.outer(ht_home_probs, ht_away_probs)
+        
+        top5 = sorted([(f"{h}-{a} / {ml[0]}-{ml[1]}", ht_probs[h,a] * probs[ml[0], ml[1]]) 
+                       for h in range(4) for a in range(4)], key=lambda x: x[1], reverse=True)[:5]
         for combo, p in top5:
             st.write(f"**{combo}** → %{p*100:.1f}")
         
