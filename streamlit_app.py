@@ -5,13 +5,12 @@ from datetime import date
 import numpy as np
 import math
 
-# Manuel Poisson PMF (scipy olmadan)
+# Manuel Poisson (scipy olmadan, sorunsuz)
 def poisson_pmf(k, lam):
     if k < 0 or not isinstance(k, int):
         return 0.0
     return math.exp(-lam) * (lam ** k) / math.factorial(k)
 
-# MOBİL OPTİMİZASYON
 st.set_page_config(
     page_title="Grok İddaa",
     page_icon="⚽",
@@ -22,10 +21,8 @@ st.set_page_config(
 st.title("⚽ Grok İddaa Tahmin - TÜM LİGLER 🌍")
 st.caption("Telefon için optimize • Gerçek zamanlı • Poisson Modeli")
 
-# API KEY
 api_key = st.secrets["api_key"]
 
-# Sidebar Filtreler
 with st.sidebar:
     st.header("🎛️ Filtreler")
     selected_date = st.date_input("Maç Tarihi", value=date.today())
@@ -44,7 +41,7 @@ if st.sidebar.button("🌍 Tüm Liglerden Maçları Çek", use_container_width=T
         data = [{
             "fixture_id": f["fixture"]["id"],
             "lig": f["league"]["name"],
-            "ülke": f["league"].get("country", "Uluslararası"),
+            "country": f["league"].get("country", "International"),
             "saat": f["fixture"]["date"][11:16],
             "ev": f["teams"]["home"]["name"],
             "deplasman": f["teams"]["away"]["name"],
@@ -53,21 +50,20 @@ if st.sidebar.button("🌍 Tüm Liglerden Maçları Çek", use_container_width=T
         
         df = pd.DataFrame(data)
         popular = ["Süper Lig", "Premier League", "La Liga", "Serie A", "Bundesliga", "Ligue 1", "Champions League"]
-        df["popüler"] = df["lig"].isin(popular)
-        df = df.sort_values(["popüler", "ülke", "lig", "saat"], ascending=[False, True, True, True])
+        df["is_popular"] = df["lig"].isin(popular)
+        df = df.sort_values(["is_popular", "country", "lig", "saat"], ascending=[False, True, True, True])
         
         st.session_state.df = df
         st.success(f"✅ {len(df)} maç yüklendi!")
 
-# Veri varsa göster
 if "df" in st.session_state:
     df = st.session_state.df
     
     col1, col2 = st.columns(2)
     with col1:
-        secili_ulke = st.multiselect("Ülke", sorted(df["ülke"].unique()), default=["Türkiye"])
+        secili_country = st.multiselect("Ülke", sorted(df["country"].unique()), default=["Turkey"])
     with col2:
-        filtered = df[df["ülke"].isin(secili_ulke)] if secili_ulke else df
+        filtered = df[df["country"].isin(secili_country)] if secili_country else df
         secili_lig = st.multiselect("Lig", sorted(filtered["lig"].unique()), default=filtered["lig"].unique()[:8])
     
     if secili_lig:
@@ -90,7 +86,6 @@ if "df" in st.session_state:
                         st.session_state.selected = row['fixture_id']
                         st.rerun()
 
-    # Tahmin ekranı
     if "selected" in st.session_state:
         fid = st.session_state.selected
         st.divider()
