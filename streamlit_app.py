@@ -5,18 +5,12 @@ from datetime import date
 import numpy as np
 import math
 
-# Manuel Poisson (scipy olmadan, sorunsuz)
 def poisson_pmf(k, lam):
     if k < 0 or not isinstance(k, int):
         return 0.0
     return math.exp(-lam) * (lam ** k) / math.factorial(k)
 
-st.set_page_config(
-    page_title="Grok İddaa",
-    page_icon="⚽",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
+st.set_page_config(page_title="Grok İddaa", page_icon="⚽", layout="wide", initial_sidebar_state="collapsed")
 
 st.title("⚽ Grok İddaa Tahmin - TÜM LİGLER 🌍")
 st.caption("Telefon için optimize • Gerçek zamanlı • Poisson Modeli")
@@ -38,6 +32,11 @@ if st.sidebar.button("🌍 Tüm Liglerden Maçları Çek", use_container_width=T
             st.stop()
         
         fixtures = r.json().get("response", [])
+        
+        if not fixtures:
+            st.warning("❌ Bu tarihte hiç maç bulunamadı. Başka tarih seç (örneğin bugünü dene).")
+            st.stop()
+        
         data = [{
             "fixture_id": f["fixture"]["id"],
             "lig": f["league"]["name"],
@@ -61,7 +60,7 @@ if "df" in st.session_state:
     
     col1, col2 = st.columns(2)
     with col1:
-        secili_country = st.multiselect("Ülke", sorted(df["country"].unique()), default=["Turkey"])
+        secili_country = st.multiselect("Ülke", sorted(df["country"].unique()), default=["Turkey", "Türkiye"])
     with col2:
         filtered = df[df["country"].isin(secili_country)] if secili_country else df
         secili_lig = st.multiselect("Lig", sorted(filtered["lig"].unique()), default=filtered["lig"].unique()[:8])
