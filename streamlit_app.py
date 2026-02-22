@@ -52,13 +52,13 @@ if "mode" in st.session_state:
         r = requests.get(url, headers=headers)
         
         if r.status_code != 200:
-            st.error("API Hatası → Key'i doğru girdiğinden emin ol veya kota dolduysa yarın dene")
+            st.error("API Hatası → Key'i doğru girdiğinden emin ol")
             st.stop()
         
         data = r.json().get("matches", [])
         
         if not data:
-            st.warning("❌ Şu anda maç yok veya API henüz yüklemedi. 🔴 Canlı Maçlar veya 📅 Bugünkü butonunu dene.")
+            st.warning("❌ Şu anda maç yok. 🔴 Canlı veya 📅 Bugünkü butonunu dene.")
             st.stop()
         
         matches_list = []
@@ -67,7 +67,7 @@ if "mode" in st.session_state:
                 "fixture_id": m["id"],
                 "lig": m["competition"]["name"],
                 "country": m["competition"].get("area", {}).get("name", "International"),
-                "saat": m["utcDate"][11:16],  # UTC saat
+                "saat": m["utcDate"][11:16],
                 "ev": m["homeTeam"]["name"],
                 "deplasman": m["awayTeam"]["name"],
                 "durum": m["status"]
@@ -79,13 +79,23 @@ if "mode" in st.session_state:
         st.session_state.df = df
         st.success(f"✅ {len(df)} maç yüklendi!")
 
-# Veri varsa göster
+# Veri varsa göster (DÜZELTİLMİŞ KISIM)
 if "df" in st.session_state:
     df = st.session_state.df
     
     col1, col2 = st.columns(2)
     with col1:
-        secili_country = st.multiselect("Ülke", sorted(df["country"].unique()), default=["Turkey"])
+        countries = sorted(df["country"].unique())
+        default_countries = []
+        for pref in ["Turkey", "Türkiye", "Turkiye"]:
+            if pref in countries:
+                default_countries = [pref]
+                break
+        if not default_countries and countries:
+            default_countries = [countries[0]]
+        
+        secili_country = st.multiselect("Ülke", countries, default=default_countries)
+    
     with col2:
         filtered = df[df["country"].isin(secili_country)] if secili_country else df
         secili_lig = st.multiselect("Lig", sorted(filtered["lig"].unique()), default=filtered["lig"].unique()[:10])
